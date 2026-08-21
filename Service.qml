@@ -10,6 +10,7 @@ import qs.Commons
 
 import "components"
 import "NotificationLogic.js" as NotificationLogic
+import "NotificationFilter.js" as NotificationFilter
 
 Item {
   id: service
@@ -24,6 +25,9 @@ Item {
   // regeneratable cache that a `rm -rf ~/.cache` should wipe.
   readonly property string stateDir: home + "/.local/state/omarchy/"
   readonly property string settingsPath: stateDir + "notifications.json"
+  readonly property string filterStateDir: stateDir + "filter.notifications/"
+  readonly property string filtersPath: filterStateDir + "filters.json"
+  property var filterRules: []
   // One file per on-screen popup, so live toasts survive shell restarts.
   // A file exists exactly as long as its popup is showing: written when the
   // toast appears, moved into historyDir when it expires, is dismissed, or is
@@ -146,11 +150,11 @@ Item {
   // screen; the distinction only decides whether a DND-silenced one is worth
   // recording at all.
   function isEphemeral(notification) {
-    var transient = false
+    var isTransient = false
     try {
-      transient = !!(notification.hints && notification.hints["transient"])
-    } catch (e) { transient = false }
-    return transient || NotificationLogic.isEphemeralApp(String(notification.appName || ""))
+      isTransient = !!(notification.hints && notification.hints["transient"])
+    } catch (e) { isTransient = false }
+    return isTransient || NotificationLogic.isEphemeralApp(String(notification.appName || ""))
   }
 
   function handleNotification(notification) {
@@ -167,10 +171,26 @@ Item {
         delete service.liveRefs[snapshot.originalId]
     })
 
+    // Custom notification filtering (by app, regex, body, urgency)
+    var filterAction = NotificationFilter.evaluate(snapshot, service.filterRules)
+    if (filterAction === "block") {
+      delete liveRefs[snapshot.originalId]
+      try {
+        notification.dismiss()
+      } catch (e) {
+      }
+      notification.tracked = false
+      return
+    }
+    if (filterAction === "silence") {
+      writeSilenced(notification, snapshot)
+      return
+    }
+
     // DND bypass rules: chat apps abuse urgency=critical to force
     // visibility, so critical alone isn't enough — we also require the
     // sender to be CLI-style. See shouldBypassDnd().
-    if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+    if (filterAction !== "popup" && service.doNotDisturb && !shouldBypassDnd(notification)) {
       // The toast never shows, so the only record a silenced notification
       // can leave is a history entry. Write it straight into history —
       // "what did I miss while silenced" is exactly what history is for.
@@ -411,7 +431,7 @@ Item {
 
   Process {
     id: ensureDirsProc
-    command: ["mkdir", "-p", service.stateDir, service.popupStateDir, service.historyDir, service.imagesDir]
+    command: ["mkdir", "-p", service.stateDir, service.filterStateDir, service.popupStateDir, service.historyDir, service.imagesDir]
     running: false
   }
 
@@ -832,6 +852,20 @@ Item {
     settingsFile.setText(JSON.stringify({ version: 3, dnd: persisted.doNotDisturb }, null, 2) + "\n")
   }
 
+  FileView {
+    id: filtersFile
+    path: service.filtersPath
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      service.filterRules = NotificationFilter.parseFilters(text())
+      console.log("filter.notifications: loaded " + service.filterRules.length + " filter rules")
+    }
+    onLoadFailed: service.filterRules = []
+    onFileChanged: reload()
+  }
+
   Component.onCompleted: {
     ensureDirsProc.running = true
     // Once mkdir has had a tick, load the existing settings file. FileView
@@ -839,6 +873,7 @@ Item {
     // handles that path.
     Qt.callLater(function() {
       settingsFile.reload()
+      filtersFile.reload()
       // Re-show popups that were on screen when the previous shell died.
       // The glob-through-bash tolerates a missing/empty dir (first run).
       // awk 1 (not cat) so a torn file missing its trailing newline can't
@@ -924,6 +959,11 @@ Item {
     }
 
     function ping(): string { return "ok" }
+
+    function reloadFilters(): string {
+      filtersFile.reload()
+      return "ok"
+    }
   }
 
   // ---------------------------------------------------- server

@@ -1,15 +1,26 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy.notifications",
-  "name": "Notifications",
+  "id": "filter.notifications",
+  "name": "Notification Filters",
   "version": "1.0.0",
-  "author": "Omarchy",
-  "description": "Notification daemon, popups, DND, and history",
+  "author": "Psychosoc1al",
+  "description": "Vanilla Omarchy notification daemon with interactive filter manager on top of it",
   "kinds": [
-    "service"
+    "service",
+    "bar-widget"
   ],
   "keepLoaded": true,
   "entryPoints": {
-    "service": "Service.qml"
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Notification Filters",
+    "description": "Add, edit, and delete notification popup filters",
+    "category": "Notifications",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.notifications"
   }
 }
