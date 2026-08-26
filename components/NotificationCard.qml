@@ -34,9 +34,9 @@ BorderSurface {
 
   signal closeRequested()
   signal cardClicked()
-  // Prefer per-notification media/avatar data, then fall back to the app icon.
-  // The `check` flag avoids Qt's missing-texture placeholder for unknown names.
-  readonly property string smallIconSource: image.length > 0 ? image : iconSource(appIcon)
+  // Only allow themed icon names resolved safely via Quickshell.iconPath.
+  // Notification-controlled file://, image://, and path sources are rejected to prevent reaching Image.source.
+  readonly property string smallIconSource: iconSource(appIcon)
   readonly property bool hasGlyph: glyph.length > 0
   readonly property bool compactGlyph: NotificationLogic.shouldRenderCompactGlyph(glyph, smallIconSource, singleLineToast)
   readonly property bool hasSmallIcon: smallIconSource.length > 0
@@ -44,7 +44,6 @@ BorderSurface {
   readonly property bool singleLineToast: sanitizedBody.length === 0
   readonly property bool collapseRedundantIcon: singleLineToast && !hasGlyph && summaryStartsWithGlyph
   readonly property string sanitizedBody: sanitizeBody(body)
-  readonly property string styledBody: sanitizedBody.replace(/\r\n|\r|\n/g, "<br/>")
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
@@ -56,10 +55,9 @@ BorderSurface {
   }
 
   function iconSource(icon) {
-    var value = String(icon || "")
+    var value = String(icon || "").trim()
     if (value.length === 0) return ""
-    if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
-    if (value.charAt(0) === "/") return Util.fileUrl(value)
+    if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0 || value.indexOf("/") !== -1 || value.indexOf(":") !== -1 || value.indexOf("\\") !== -1) return ""
     return Quickshell.iconPath(value, true)
   }
 
@@ -160,6 +158,7 @@ BorderSurface {
           Layout.fillWidth: true
           visible: root.summary.length > 0
           text: root.summary
+          textFormat: Text.PlainText
           font.family: "Liberation Sans"
           color: Color.notifications.text
           font.pixelSize: Style.font.title
@@ -173,8 +172,8 @@ BorderSurface {
           Layout.fillWidth: true
           Layout.topMargin: Style.space(2)
           visible: root.sanitizedBody.length > 0
-          text: root.styledBody
-          textFormat: Text.StyledText
+          text: root.sanitizedBody
+          textFormat: Text.PlainText
           font.family: "Liberation Sans"
           color: root.bodyColor
           font.pixelSize: Style.font.title

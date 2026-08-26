@@ -852,18 +852,31 @@ Item {
     settingsFile.setText(JSON.stringify({ version: 3, dnd: persisted.doNotDisturb }, null, 2) + "\n")
   }
 
-  FileView {
-    id: filtersFile
-    path: service.filtersPath
-    watchChanges: true
-    atomicWrites: true
-    printErrors: false
-    onLoaded: {
-      service.filterRules = NotificationFilter.parseFilters(text())
-      console.log("filter.notifications: loaded " + service.filterRules.length + " filter rules")
+  Process {
+    id: readFiltersProc
+    running: false
+    command: NotificationFilter.loadFiltersCommand(service.filtersPath)
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        service.filterRules = NotificationFilter.parseFilters(text)
+        console.log("filter.notifications: loaded " + service.filterRules.length + " filter rules")
+      }
     }
-    onLoadFailed: service.filterRules = []
-    onFileChanged: reload()
+  }
+
+  Timer {
+    id: filterWatchTimer
+    interval: 2000
+    repeat: true
+    running: true
+    onTriggered: service.reloadFilters()
+  }
+
+  function reloadFilters() {
+    if (!readFiltersProc.running) {
+      readFiltersProc.running = true
+    }
   }
 
   Component.onCompleted: {
@@ -873,7 +886,7 @@ Item {
     // handles that path.
     Qt.callLater(function() {
       settingsFile.reload()
-      filtersFile.reload()
+      service.reloadFilters()
       // Re-show popups that were on screen when the previous shell died.
       // The glob-through-bash tolerates a missing/empty dir (first run).
       // awk 1 (not cat) so a torn file missing its trailing newline can't
@@ -961,7 +974,7 @@ Item {
     function ping(): string { return "ok" }
 
     function reloadFilters(): string {
-      filtersFile.reload()
+      service.reloadFilters()
       return "ok"
     }
   }

@@ -93,6 +93,39 @@ function evaluate(notification, rules) {
   return null
 }
 
+function loadFiltersCommand(path) {
+  var strPath = String(path || "")
+  if (strPath === "") return []
+
+  var maxFilterBytes = 1024 * 1024
+  var loadFiltersPy = `
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+size_limit = ${maxFilterBytes}
+descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+try:
+    stats = os.fstat(descriptor)
+    if stat.S_ISREG(stats.st_mode) and stats.st_size <= size_limit:
+        sys.stdout.buffer.write(os.read(descriptor, size_limit))
+finally:
+    os.close(descriptor)
+`
+
+  return [
+    "/usr/bin/timeout",
+    "--signal=KILL",
+    "1",
+    "/usr/bin/python3",
+    "-I",
+    "-c",
+    loadFiltersPy,
+    strPath
+  ]
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     parseFilters: parseFilters,
@@ -101,6 +134,7 @@ if (typeof module !== "undefined") {
     testUrgency: testUrgency,
     matchRule: matchRule,
     normalizeAction: normalizeAction,
-    evaluate: evaluate
+    evaluate: evaluate,
+    loadFiltersCommand: loadFiltersCommand
   }
 }

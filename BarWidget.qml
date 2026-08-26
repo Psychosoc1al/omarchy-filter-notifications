@@ -36,21 +36,45 @@ BarWidget {
 
   FileView {
     id: filtersFile
-    path: root.filtersPath
-    watchChanges: true
+    preload: false
+    watchChanges: false
     atomicWrites: true
     printErrors: false
-    onLoaded: root.rules = NotificationFilter.parseFilters(text())
-    onLoadFailed: root.rules = []
-    onFileChanged: reload()
+  }
+
+  Process {
+    id: readFiltersProc
+    running: false
+    command: NotificationFilter.loadFiltersCommand(root.filtersPath)
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.rules = NotificationFilter.parseFilters(text)
+      }
+    }
+  }
+
+  Timer {
+    id: filterWatchTimer
+    interval: 2000
+    repeat: true
+    running: true
+    onTriggered: root.reloadFilters()
+  }
+
+  function reloadFilters() {
+    if (!readFiltersProc.running) {
+      readFiltersProc.running = true
+    }
   }
 
   Component.onCompleted: {
-    filtersFile.reload()
+    root.reloadFilters()
   }
 
   function saveRules(newRules) {
     root.rules = newRules
+    filtersFile.path = root.filtersPath
     filtersFile.setText(JSON.stringify(newRules, null, 2) + "\n")
   }
 
@@ -173,7 +197,9 @@ BarWidget {
     contentWidth: panel.fittedContentWidth(Style.space(420))
     contentHeight: panel.fittedContentHeight(mainColumn.implicitHeight)
     onOpenChanged: {
-      if (!open) {
+      if (open) {
+        root.reloadFilters()
+      } else {
         root.confirmingDeleteIndex = -1
         confirmDeleteTimer.stop()
         root.cancelEdit()
@@ -400,6 +426,7 @@ BarWidget {
           Text {
             visible: root.formError !== ""
             text: root.formError
+            textFormat: Text.PlainText
             color: root.bar ? root.bar.urgent : Color.urgent
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.caption
@@ -519,6 +546,7 @@ BarWidget {
                     Text {
                       Layout.fillWidth: true
                       text: modelData.description || (modelData.app ? ("App: " + modelData.app) : (modelData.summary ? ("Summary: " + modelData.summary) : "Filter Rule"))
+                      textFormat: Text.PlainText
                       color: root.bar ? root.bar.foreground : Color.foreground
                       font.family: root.bar ? root.bar.fontFamily : Style.font.family
                       font.pixelSize: Style.font.body
@@ -535,6 +563,7 @@ BarWidget {
                     Text {
                       visible: !!modelData.app
                       text: "App: " + modelData.app
+                      textFormat: Text.PlainText
                       color: Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.35)
                       font.family: root.bar ? root.bar.fontFamily : Style.font.family
                       font.pixelSize: Style.font.caption
@@ -545,6 +574,7 @@ BarWidget {
                     Text {
                       visible: !!modelData.summary
                       text: "Summary: " + modelData.summary
+                      textFormat: Text.PlainText
                       color: Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.35)
                       font.family: root.bar ? root.bar.fontFamily : Style.font.family
                       font.pixelSize: Style.font.caption
@@ -555,6 +585,7 @@ BarWidget {
                     Text {
                       visible: !!modelData.body
                       text: "Body: " + modelData.body
+                      textFormat: Text.PlainText
                       color: Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.35)
                       font.family: root.bar ? root.bar.fontFamily : Style.font.family
                       font.pixelSize: Style.font.caption
@@ -565,6 +596,7 @@ BarWidget {
                     Text {
                       visible: !!modelData.urgency && modelData.urgency !== "any"
                       text: "Urgency: " + modelData.urgency
+                      textFormat: Text.PlainText
                       color: Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.35)
                       font.family: root.bar ? root.bar.fontFamily : Style.font.family
                       font.pixelSize: Style.font.caption
